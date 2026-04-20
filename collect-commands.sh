@@ -1,32 +1,33 @@
 #!/usr/bin/env bash
 
 # ==============================================================
-# TOOL        : diagnose-toolkit
+# TOOL        : collect-commands
 # DESCRIPTION : Collects diagnostic information from the system.
 # AUTHOR      : Lucas Cruz
 # CREATED     : 2026-04-20
 # VERSION     : 0.0.1
 # ==============================================================
 
-
 set -uo pipefail
 
-FULL_TOOLNAME="Diagnose Toolkit"
-TOOLNAME="diagnose-toolkit"
-VERSION="0.0.2"
-
-TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
-HOST="$(hostname -s 2>/dev/null || hostname)"
-OUTPUTDIR="${TOOLNAME}_${HOST}_${TIMESTAMP}"
-ARCHIVE="${OUTPUTDIR}.tar.gz"
-OS="$(awk -F '"' '/^PRETTY_NAME=/{print $2}' /etc/os-release 2>/dev/null)"
-STATUSLOG="${OUTPUTDIR}/logs/command-status.log"
+FULL_TOOLNAME="Diagnose Toolkit - Command Collector"
+TOOLNAME="collect-commands"
+VERSION="0.0.1"
 
 MODE="${1:-full}"
 OUTPUTDIR="${2:-}"
 
+TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
+HOST="$(hostname -s 2>/dev/null || hostname)"
+OS="$(awk -F '"' '/^PRETTY_NAME=/{print $2}' /etc/os-release 2>/dev/null)"
+
+COMMANDS_ROOT="${OUTPUTDIR}/commands"
+STATUSLOG="${OUTPUTDIR}/logs/command-status.log"
+SUMMARY="${OUTPUTDIR}/meta/commands-summary.txt"
+
 GREEN="\033[0;32m"
 RED="\033[0;31m"
+YELLOW="\033[1;33m"
 WHITE="\033[1;37m"
 COLOR_END="\033[0m"
 
@@ -37,7 +38,7 @@ fi
 
 print_help() {
     cat <<EOF
-Usage: $0 [profile] [options]
+Usage: $0 [profile] [outputdir]
 
 Profiles:
   basic
@@ -52,13 +53,10 @@ Options:
   -v, --version         Show version
   -h, --help            Show this help
   --list-profiles       List available profiles
-  --no-archive          Do not create tar.gz archive
 
 Examples:
-  $0
-  $0 basic
-  $0 cluster --no-archive
-  $0 gpu
+  $0 full /tmp/diagnose-toolkit_host_20260420_180000
+  $0 cluster /var/tmp/diag_out
 EOF
 }
 
@@ -75,34 +73,29 @@ Available profiles:
 EOF
 }
 
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        basic|full|cluster|gpu|packages|network|storage)
-            MODE="$1"
-            shift
-            ;;
-        --list-profiles)
-            print_profiles
-            exit 0
-            ;;
-        -v|--version)
-            echo "${FULL_TOOLNAME} :: version ${VERSION}"
-            exit 0
-            ;;
-        -h|--help)
-            print_help
-            exit 0
-            ;;
-        *)
-            echo "Unknown argument: $1" >&2
-            echo
-            print_help
-            exit 1
-            ;;
-    esac
-done
+if [[ "${MODE}" == "-h" || "${MODE}" == "--help" ]]; then
+    print_help
+    exit 0
+fi
 
-mkdir -p "${OUTPUTDIR}"/{meta,hardware,network,storage,security,packages,cluster,logs}
+if [[ "${MODE}" == "--list-profiles" ]]; then
+    print_profiles
+    exit 0
+fi
+
+if [[ "${MODE}" == "-v" || "${MODE}" == "--version" ]]; then
+    echo "${FULL_TOOLNAME} :: version ${VERSION}"
+    exit 0
+fi
+
+if [[ -z "${OUTPUTDIR}" ]]; then
+    echo "Usage: $0 [profile] [outputdir]" >&2
+    exit 1
+fi
+
+mkdir -p "${COMMANDS_ROOT}"/{meta,hardware,network,storage,security,packages,cluster}
+mkdir -p "${OUTPUTDIR}/logs" "${OUTPUTDIR}/meta"
+: > "${STATUSLOG}"
 
 printf "\n======================================================\n"
 echo "= Toolkit        : ${FULL_TOOLNAME}"
@@ -113,7 +106,7 @@ echo "= Date           : $(date)"
 echo "= Profile        : ${MODE}"
 printf "======================================================\n\n"
 
-cat > "${OUTPUTDIR}/meta/tool-info.txt" <<EOF
+cat > "${OUTPUTDIR}/meta/commands-tool-info.txt" <<EOF
 TOOLNAME=${TOOLNAME}
 FULL_TOOLNAME=${FULL_TOOLNAME}
 VERSION=${VERSION}
@@ -132,6 +125,8 @@ log_status() {
 
     if [[ "${rc}" -eq 0 ]]; then
         status="OK"
+    elif [[ "${rc}" -eq 127 ]]; then
+        status="SKIP"
     fi
 
     printf '%s | %-4s | %s | %s' \
@@ -167,7 +162,7 @@ run_cmd() {
     local name="$2"
     local cmd="$3"
 
-    local filepath="${OUTPUTDIR}/${category}/${name}.txt"
+    local filepath="${COMMANDS_ROOT}/${category}/${name}.txt"
     local rc=0
 
     if ! command_exists_for_entry "${cmd}"; then
@@ -181,7 +176,7 @@ run_cmd() {
         } > "${filepath}"
 
         log_status 127 "${cmd}" "${filepath}" "rc=127"
-        echo "[SKIP] ${category}/${name} :: command not found"
+        echo -e "${WHITE}[${COLOR_END}${YELLOW}SKIP${COLOR_END}${WHITE}] ${category}/${name} :: command not found${COLOR_END}"
         return 0
     fi
 
@@ -197,10 +192,8 @@ run_cmd() {
     log_status "${rc}" "${cmd}" "${filepath}" "rc=${rc}"
 
     if [[ "${rc}" -ne 0 ]]; then
-        # echo "[FAIL] ${category}/${name} :: ${cmd}"
         echo -e "${WHITE}[${COLOR_END}${RED}FAIL${COLOR_END}${WHITE}] ${category}/${name} :: ${cmd}${COLOR_END}"
     else
-        # echo "[ OK ] ${category}/${name}"
         echo -e "${WHITE}[${COLOR_END} ${GREEN}OK${COLOR_END}${WHITE} ] ${category}/${name}${COLOR_END}"
     fi
 }
@@ -261,7 +254,7 @@ load_full_profile() {
         "packages|yum_installed|yum list installed"
         "packages|rpm_qa|rpm -qa"
         "packages|yum_history|yum history"
-        "packages|module_avail|module avail"
+        "packages|module_avail|source /etc/profile >/dev/null 2>&1; module avail"
 
         "cluster|pcs_status|pcs status"
     )
@@ -292,7 +285,7 @@ load_cluster_profile() {
         "network|ofed_info|ofed_info | head -1"
 
         "cluster|pcs_status|pcs status"
-        "packages|module_avail|module avail"
+        "packages|module_avail|source /etc/profile >/dev/null 2>&1; module avail"
     )
 }
 
@@ -307,7 +300,7 @@ load_gpu_profile() {
         "hardware|nvidia_smi|nvidia-smi"
 
         "packages|rpm_qa|rpm -qa"
-        "packages|module_avail|module avail"
+        "packages|module_avail|source /etc/profile >/dev/null 2>&1; module avail"
     )
 }
 
@@ -319,7 +312,7 @@ load_packages_profile() {
         "packages|yum_installed|yum list installed"
         "packages|rpm_qa|rpm -qa"
         "packages|yum_history|yum history"
-        "packages|module_avail|module avail"
+        "packages|module_avail|source /etc/profile >/dev/null 2>&1; module avail"
     )
 }
 
@@ -372,13 +365,11 @@ SKIP_COUNT=0
 for entry in "${commands[@]}"; do
     IFS='|' read -r category name cmd <<< "${entry}"
 
-    # before_lines="$(wc -l < "${STATUSLOG}" 2>/dev/null || echo 0)"
     before_lines=0
     [[ -f "${STATUSLOG}" ]] && before_lines="$(wc -l < "${STATUSLOG}")"
 
-
     run_cmd "${category}" "${name}" "${cmd}"
-    # after_lines="$(wc -l < "${STATUSLOG}" 2>/dev/null || echo 0)"
+
     after_lines=0
     [[ -f "${STATUSLOG}" ]] && after_lines="$(wc -l < "${STATUSLOG}")"
 
@@ -386,7 +377,7 @@ for entry in "${commands[@]}"; do
         last_status="$(tail -n 1 "${STATUSLOG}")"
         if grep -q ' | OK[[:space:]]*|' <<< "${last_status}"; then
             ((OK_COUNT+=1))
-        elif grep -q 'rc=127' <<< "${last_status}"; then
+        elif grep -q ' | SKIP[[:space:]]*|' <<< "${last_status}" || grep -q 'rc=127' <<< "${last_status}"; then
             ((SKIP_COUNT+=1))
         else
             ((FAIL_COUNT+=1))
@@ -394,7 +385,7 @@ for entry in "${commands[@]}"; do
     fi
 done
 
-cat > "${OUTPUTDIR}/meta/summary.txt" <<EOF
+cat > "${SUMMARY}" <<EOF
 Toolkit        : ${FULL_TOOLNAME}
 Version        : ${VERSION}
 Hostname       : ${HOST}
@@ -407,17 +398,10 @@ Commands FAIL  : ${FAIL_COUNT}
 Commands SKIP  : ${SKIP_COUNT}
 EOF
 
-if [[ "${CREATE_ARCHIVE}" == "yes" ]]; then
-    tar -czf "${ARCHIVE}" "${OUTPUTDIR}"
-fi
-
 echo
-echo "Output directory : ${OUTPUTDIR}"
-if [[ "${CREATE_ARCHIVE}" == "yes" ]]; then
-    echo "Archive          : ${ARCHIVE}"
-fi
+echo "Commands root    : ${COMMANDS_ROOT}"
 echo "Status log       : ${STATUSLOG}"
-echo "Summary          : ${OUTPUTDIR}/meta/summary.txt"
+echo "Summary          : ${SUMMARY}"
 echo
 echo "Commands OK      : ${OK_COUNT}"
 echo "Commands FAIL    : ${FAIL_COUNT}"
