@@ -9,7 +9,9 @@ Toolkit para coleta padronizada de informações de diagnóstico em sistemas Lin
 O toolkit é composto por três scripts:
 
 `diagnose-toolkit.sh`: Wrapper - orquestrador principal
+
 `collect-commands.sh`: Coletor via comandos
+
 `collect-files.sh`: Coletor de arquivos de configuração e diretórios
 
 ### 1. `diagnose-toolkit.sh`

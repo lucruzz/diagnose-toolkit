@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
 # ==============================================================
-# TOOL: diagnose-toolkit
-# DESCRIPTION: Collects diagnostic information from the system.
-# AUTHOR: Lucas Cruz
-# CREATED: 2026-04-20
-# VERSION: 0.0.1
+# TOOL        : diagnose-toolkit
+# DESCRIPTION : Collects diagnostic information from the system.
+# AUTHOR      : Lucas Cruz
+# CREATED     : 2026-04-20
+# VERSION     : 0.0.1
 # ==============================================================
 
 set -uo pipefail
