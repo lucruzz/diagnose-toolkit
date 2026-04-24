@@ -1,5 +1,7 @@
 # Diagnose Toolkit
 
+:gear: `Em desenvolvimento...`
+
 Toolkit para coleta padronizada de informações de diagnóstico em sistemas Linux, com foco em ambientes HPC. Com o Diagnose Toolkit é possível coletar de forma consistente informações dinâmicas do sistema (via comandos), configurações e arquivos relevantes e evidências estruturadas para troubleshooting.
 
 ---
