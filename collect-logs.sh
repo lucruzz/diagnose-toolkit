@@ -1,18 +1,17 @@
 #!/usr/bin/env bash
 
 # ==============================================================
-# TOOL        : diagnose-toolkit
-# DESCRIPTION : Collects diagnostic information from the system.
+# TOOL        : collect-logs
+# DESCRIPTION : Collects system and service logs.
 # AUTHOR      : Lucas Cruz
-# CREATED     : 2026-04-20
+# CREATED     : 2026-04-24
 # VERSION     : 0.0.1
 # ==============================================================
 
-
 set -uo pipefail
 
-FULL_TOOLNAME="Diagnose Toolkit - File Collector"
-TOOLNAME="collect-files"
+FULL_TOOLNAME="Diagnose Toolkit - Log Collector"
+TOOLNAME="collect-logs"
 VERSION="0.0.1"
 
 MODE="${1:-full}"
@@ -34,12 +33,12 @@ if [[ -z "${OUTPUTDIR}" ]]; then
     exit 1
 fi
 
-FILES_ROOT="${OUTPUTDIR}/files"
-STATUSLOG="${OUTPUTDIR}/logs/file-status.log"
-MANIFEST="${OUTPUTDIR}/meta/files-manifest.txt"
-SUMMARY="${OUTPUTDIR}/meta/files-summary.txt"
+LOGS_ROOT="${OUTPUTDIR}/system-logs"
+STATUSLOG="${OUTPUTDIR}/logs/log-status.log"
+MANIFEST="${OUTPUTDIR}/meta/logs-manifest.txt"
+SUMMARY="${OUTPUTDIR}/meta/logs-summary.txt"
 
-mkdir -p "${FILES_ROOT}" "${OUTPUTDIR}/logs" "${OUTPUTDIR}/meta"
+mkdir -p "${LOGS_ROOT}" "${OUTPUTDIR}/logs" "${OUTPUTDIR}/meta"
 : > "${STATUSLOG}"
 : > "${MANIFEST}"
 
@@ -71,13 +70,13 @@ EOF
 print_profiles() {
     cat <<EOF
 Available profiles:
-  basic     - Minimal config collection
-  full      - Full config collection
-  cluster   - HPC/cluster focused config collection
-  gpu       - GPU node related config collection
-  packages  - Package/repository related config collection
-  network   - Network related config collection
-  storage   - Storage related config collection
+  basic     - Minimal log collection
+  full      - Full /var/log collection
+  cluster   - HPC/cluster related logs
+  gpu       - GPU related logs
+  packages  - Package manager logs
+  network   - Network/auth/system logs
+  storage   - Storage related logs
 EOF
 }
 
@@ -117,14 +116,15 @@ log_status() {
     printf '\n' >> "${STATUSLOG}"
 }
 
-copy_entry() {
+copy_log_entry() {
     local match="$1"
     local relpath="${match#/}"
-    local dest="${FILES_ROOT}/${relpath}"
+    local dest="${LOGS_ROOT}/${relpath}"
     local dest_parent
     local rc=0
 
     dest_parent="$(dirname "${dest}")"
+
     mkdir -p "${dest_parent}" || {
         log_status 1 "${match}" "${dest}" "failed to create destination directory"
         echo -e "${WHITE}[${COLOR_END}${RED}FAIL${COLOR_END}${WHITE}] ${match} :: mkdir failed${COLOR_END}"
@@ -135,134 +135,132 @@ copy_entry() {
 
     if [[ "${rc}" -eq 0 ]]; then
         echo "${match}" >> "${MANIFEST}"
-        echo -e "${WHITE}[${COLOR_END} ${GREEN}OK${COLOR_END}${WHITE} ] ${match}${COLOR_END}"
         log_status 0 "${match}" "${dest}"
+        echo -e "${WHITE}[${COLOR_END} ${GREEN}OK${COLOR_END}${WHITE} ] ${match}${COLOR_END}"
     else
-        echo -e "${WHITE}[${COLOR_END}${RED}FAIL${COLOR_END}${WHITE}] ${match}${COLOR_END}"
         log_status "${rc}" "${match}" "${dest}" "rc=${rc}"
+        echo -e "${WHITE}[${COLOR_END}${RED}FAIL${COLOR_END}${WHITE}] ${match}${COLOR_END}"
     fi
 }
 
-collect_path() {
+collect_log_path() {
     local pattern="$1"
     local found=0
 
     while IFS= read -r match; do
         found=1
-        copy_entry "${match}"
+        copy_log_entry "${match}"
     done < <(compgen -G "${pattern}" || true)
 
     if [[ "${found}" -eq 0 ]]; then
+        log_status 127 "${pattern}" "${LOGS_ROOT}" "no matches"
         echo -e "${WHITE}[${COLOR_END}${YELLOW}SKIP${COLOR_END}${WHITE}] ${pattern} :: no matches${COLOR_END}"
-        log_status 127 "${pattern}" "${FILES_ROOT}" "no matches"
     fi
 }
 
-load_basic_paths() {
-    paths=(
-        "/etc/hosts"
-        "/etc/fstab"
-        "/usr/lib/os-release"
-        "/etc/redhat-release"
+load_basic_logs() {
+    logs=(
+        "/var/log/messages"
+        "/var/log/secure"
+        "/var/log/dmesg"
+        "/var/log/boot.log"
+        "/var/log/cron"
     )
 }
 
-load_full_paths() {
-    paths=(
-        "/etc/beegfs"
-        "/etc/exports"
-        "/etc/fstab"
-        "/etc/hosts"
-        "/etc/slurm"
-        "/usr/lib/os-release"
-        "/etc/redhat-release"
-        "/etc/yum.repos.d"
-        "/etc/multipath*"
-        "/etc/chrony.conf"
-        "/etc/resolv.conf"
-        "/etc/selinux/config"
-        "/etc/security/limits.conf"
-        "/etc/ssh/sshd_config"
-        "/etc/sysctl.conf"
-        "/etc/sysctl.d"
-        "/etc/modules-load.d"
-        "/etc/modprobe.d"
+load_full_logs() {
+    logs=(
+        "/var/log/messages*"
+        "/var/log/secure*"
+        "/var/log/dmesg*"
+        "/var/log/cron*"
+        "/var/log/maillog*"
+        "/var/log/spooler*"
+        "/var/log/audit"
+        "/var/log/journal"
+        "/var/log/yum.log*"
+        "/var/log/dnf*"
+        "/var/log/hawkey.log*"
+        "/var/log/slurm"
+        "/var/log/slurm*"
+        "/var/log/beegfs*"
+        "/var/log/pacemaker"
+        "/var/log/cluster"
+        "/var/log/sssd"
+        "/var/log/tuned"
+        "/var/log/chrony"
+        "/var/log/sa"
+        "/var/log/gpu-manager*"
+        "/var/log/nvidia*"
+        "/var/log/aide"
     )
 }
 
-load_cluster_paths() {
-    paths=(
-        "/etc/beegfs"
-        "/etc/exports"
-        "/etc/fstab"
-        "/etc/hosts"
-        "/etc/slurm"
-        "/usr/lib/os-release"
-        "/etc/redhat-release"
-        "/etc/yum.repos.d"
-        "/etc/multipath*"
-        "/etc/chrony.conf"
-        "/etc/resolv.conf"
-        "/etc/selinux/config"
-        "/etc/security/limits.conf"
-        "/etc/ssh/sshd_config"
-        "/etc/sysctl.conf"
-        "/etc/sysctl.d"
-        "/etc/modules-load.d"
-        "/etc/modprobe.d"
+load_cluster_logs() {
+    logs=(
+        "/var/log/messages*"
+        "/var/log/secure*"
+        "/var/log/dmesg*"
+        "/var/log/slurm"
+        "/var/log/slurm*"
+        "/var/log/beegfs*"
+        "/var/log/pcsd"
+        "/var/log/pacemaker"
+        "/var/log/cluster"
+        "/var/log/sssd"
+        "/var/log/chrony"
+        "/var/log/audit"
     )
 }
 
-load_gpu_paths() {
-    paths=(
-        "/etc/hosts"
-        "/etc/fstab"
-        "/usr/lib/os-release"
-        "/etc/redhat-release"
-        "/etc/modprobe.d"
-        "/etc/modules-load.d"
-        "/etc/yum.repos.d"
+load_gpu_logs() {
+    logs=(
+        "/var/log/messages*"
+        "/var/log/dmesg*"
+        "/var/log/secure*"
+        "/var/log/gpu-manager*"
+        "/var/log/nvidia*"
     )
 }
 
-load_packages_paths() {
-    paths=(
-        "/etc/yum.repos.d"
-        "/usr/lib/os-release"
-        "/etc/redhat-release"
+load_packages_logs() {
+    logs=(
+        "/var/log/messages*"
+        "/var/log/yum.log*"
+        "/var/log/dnf*"
+        "/var/log/hawkey.log*"
     )
 }
 
-load_network_paths() {
-    paths=(
-        "/etc/hosts"
-        "/etc/resolv.conf"
-        "/etc/chrony.conf"
-        "/etc/sysctl.conf"
-        "/etc/sysctl.d"
-        "/etc/ssh/sshd_config"
+load_network_logs() {
+    logs=(
+        "/var/log/messages*"
+        "/var/log/secure*"
+        "/var/log/sssd"
+        "/var/log/chrony"
+        "/var/log/audit"
     )
 }
 
-load_storage_paths() {
-    paths=(
-        "/etc/fstab"
-        "/etc/exports"
-        "/etc/multipath*"
-        "/etc/modprobe.d"
-        "/etc/modules-load.d"
+load_storage_logs() {
+    logs=(
+        "/var/log/messages*"
+        "/var/log/dmesg*"
+        "/var/log/multipath*"
+        "/var/log/beegfs*"
+        "/var/log/audit"
     )
 }
 
-paths=()
+logs=()
 case "${MODE}" in
-    basic)    load_basic_paths ;;
-    full)     load_full_paths ;;
-    cluster)  load_cluster_paths ;;
-    gpu)      load_gpu_paths ;;
-    packages) load_packages_paths ;;
-    network)  load_network_paths ;;
-    storage)  load_storage_paths ;;
+    basic)    load_basic_logs ;;
+    full)     load_full_logs ;;
+    cluster)  load_cluster_logs ;;
+    gpu)      load_gpu_logs ;;
+    packages) load_packages_logs ;;
+    network)  load_network_logs ;;
+    storage)  load_storage_logs ;;
     *)
         echo "Invalid profile: ${MODE}" >&2
         exit 1
@@ -273,11 +271,11 @@ OK_COUNT=0
 FAIL_COUNT=0
 SKIP_COUNT=0
 
-for path_entry in "${paths[@]}"; do
+for log_entry in "${logs[@]}"; do
     before_lines=0
     [[ -f "${STATUSLOG}" ]] && before_lines="$(wc -l < "${STATUSLOG}")"
 
-    collect_path "${path_entry}"
+    collect_log_path "${log_entry}"
 
     after_lines=0
     [[ -f "${STATUSLOG}" ]] && after_lines="$(wc -l < "${STATUSLOG}")"
@@ -301,18 +299,18 @@ Version        : ${VERSION}
 Profile        : ${MODE}
 Date           : $(date)
 
-Files OK       : ${OK_COUNT}
-Files FAIL     : ${FAIL_COUNT}
-Files SKIP     : ${SKIP_COUNT}
+Logs OK        : ${OK_COUNT}
+Logs FAIL      : ${FAIL_COUNT}
+Logs SKIP      : ${SKIP_COUNT}
 Manifest       : ${MANIFEST}
 EOF
 
 echo
-echo "Files root       : ${FILES_ROOT}"
+echo "Logs root        : ${LOGS_ROOT}"
 echo "Status log       : ${STATUSLOG}"
 echo "Manifest         : ${MANIFEST}"
 echo "Summary          : ${SUMMARY}"
 echo
-echo "Files OK         : ${OK_COUNT}"
-echo "Files FAIL       : ${FAIL_COUNT}"
-echo "Files SKIP       : ${SKIP_COUNT}"
+echo "Logs OK          : ${OK_COUNT}"
+echo "Logs FAIL        : ${FAIL_COUNT}"
+echo "Logs SKIP        : ${SKIP_COUNT}"

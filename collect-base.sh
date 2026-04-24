@@ -39,13 +39,16 @@ fi
 
 mkdir -p "${OUTPUTDIR}"/{meta,hardware,network,storage,security,packages,cluster,logs}
 
+echo -e ${YELLOW}
 printf "\n======================================================\n"
 echo "= Toolkit        : ${FULL_TOOLNAME}"
 echo "= Version        : ${VERSION}"
 echo "= Hostname       : ${HOST}"
 echo "= Operating Sys. : ${OS:-Unknown}"
 echo "= Date           : $(date)"
+echo "= Profile        : ${MODE}"
 printf "======================================================\n\n"
+echo -e ${COLOR_END}
 
 cat > "${OUTPUTDIR}/meta/tool-info.txt" <<EOF
 TOOLNAME=${TOOLNAME}

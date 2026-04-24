@@ -97,6 +97,7 @@ mkdir -p "${COMMANDS_ROOT}"/{meta,hardware,network,storage,security,packages,clu
 mkdir -p "${OUTPUTDIR}/logs" "${OUTPUTDIR}/meta"
 : > "${STATUSLOG}"
 
+echo -e ${YELLOW}
 printf "\n======================================================\n"
 echo "= Toolkit        : ${FULL_TOOLNAME}"
 echo "= Version        : ${VERSION}"
@@ -105,6 +106,7 @@ echo "= Operating Sys. : ${OS:-Unknown}"
 echo "= Date           : $(date)"
 echo "= Profile        : ${MODE}"
 printf "======================================================\n\n"
+echo -e ${COLOR_END}
 
 cat > "${OUTPUTDIR}/meta/commands-tool-info.txt" <<EOF
 TOOLNAME=${TOOLNAME}
